@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connexus Attendance Outreach</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+:root{font-family:Arial,sans-serif;color:#242424;background:#f5f3f8}
+body{margin:0}.wrap{max-width:1180px;margin:auto;padding:28px}
+.hero{background:#5b2b82;color:white;padding:26px;border-radius:18px;box-shadow:0 6px 18px #0002}
+.card{background:white;margin-top:18px;padding:22px;border-radius:16px;box-shadow:0 3px 12px #0001}
+h1,h2{margin-top:0}button,select,input{font:inherit;padding:10px 12px;border-radius:9px;border:1px solid #bbb}
+button{cursor:pointer;background:#5b2b82;color:#fff;border:0;font-weight:700}.secondary{background:#555}.green{background:#287a48}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.stat{padding:16px;background:#f5f1f9;border-radius:12px;text-align:center}.stat b{font-size:28px;display:block}
+table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left;vertical-align:top}th{background:#eee8f4}
+.l1{background:#fff7d6}.l2{background:#ffe3e3}.done{opacity:.55}
+.actions{display:flex;gap:6px;flex-wrap:wrap}.actions button{padding:7px 9px;font-size:13px}
+textarea{width:100%;min-height:180px;box-sizing:border-box;padding:12px}.hidden{display:none}
+.note{font-size:13px;color:#666}.pill{padding:4px 8px;border-radius:999px;font-weight:700;display:inline-block}.p1{background:#f6d85f}.p2{background:#f3a2a2}
+</style>
+</head>
+<body><div class="wrap">
+<div class="hero"><h1>Connexus Attendance Outreach</h1><div>Teacher tool • Grades 3–8 • Level 1 (4–7 absences) • Level 2 (8+ absences)</div></div>
+<div class="card">
+<h2>1. Load the Connexus attendance export</h2>
+<input id="attendanceFile" type="file" accept=".xlsx,.xls">
+<p class="note">This tool reads the selected spreadsheet in your browser. It does not change the original file.</p>
+<div id="teacherBox" class="hidden"><label><b>Homeroom Teacher:</b> </label><select id="teacher"></select></div>
+</div>
+<div class="card">
+<h2>2. Previous outreach history</h2>
+<p>Optional: load the outreach log downloaded the last time this tool was used. This prevents the same Level 1 or Level 2 letter from appearing again.</p>
+<input id="historyFile" type="file" accept=".xlsx,.xls,.csv">
+<p class="note">For a shared school record, keep the latest outreach log in your approved shared drive and load it here before sending letters.</p>
+</div>
+<div id="dashboard" class="card hidden">
+<h2>3. Outreach list</h2>
+<div class="grid">
+<div class="stat"><b id="need1">0</b>Level 1 to send</div>
+<div class="stat"><b id="need2">0</b>Level 2 to send</div>
+<div class="stat"><b id="already">0</b>Already sent at current level</div>
+</div>
+<div style="margin-top:14px"><button id="downloadLog" class="green">Download Updated Outreach Log</button></div>
+<table><thead><tr><th>Student</th><th>ID</th><th>Grade</th><th>Absences</th><th>Level</th><th>Previous</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<div id="letterCard" class="card hidden">
+<h2 id="letterTitle">Letter</h2>
+<p><b>Subject:</b> <span id="subject"></span></p>
+<div class="actions"><button id="copySubject">Copy Subject</button><button id="copyEnglish">Copy English</button><button id="copySpanish">Copy Spanish</button><button id="copyBoth">Copy Both</button></div>
+<h3>English</h3><textarea id="english" readonly></textarea>
+<h3>Spanish</h3><textarea id="spanish" readonly></textarea>
+</div>
+</div>
+<script>
+const LEVEL1_SUBJECT='Attendance Warning – Action Needed';
+const LEVEL2_SUBJECT='Important Attendance Warning – Action Required';
+const L1_EN=`Dear Parent/Guardian,
+
+We are reaching out because your student has accumulated four absences this semester. We want to make sure you are aware of your student’s current attendance status and have the opportunity to take action before additional absences occur.
+
+Attendance credit is required Monday through Friday throughout the 2026-2027 school year, excluding student holidays. Students can earn attendance credit in several ways, including:
+
+• Attending a LiveLesson
+• Speaking with a teacher by phone
+• Completing a lesson from their planner
+• Participating a school sponsored field trip
+• Completing the Attestation Data View
+
+Students cannot exceed 8 absences in a semester. With four absences already recorded, it is important that your student consistently engages in school each day moving forward.
+
+Please reach out to your student’s Advisor/HR teacher as soon as possible to discuss their current attendance and create a plan to stay on track for the remainder of the semester. We are here to support your student and want to work together to help them be successful.
+
+Thank you for your attention to this important matter and for partnering with us to support your student’s success.
+
+Sincerely,`;
+const L1_ES=`Carta de Advertencia de Prevención del Ausentismo – Nivel 1
+
+Asunto: Advertencia de asistencia – Se requiere tomar medidas
+
+Estimado padre, madre o tutor:
+
+Nos comunicamos con usted porque su estudiante ha acumulado cuatro ausencias durante este semestre. Queremos asegurarnos de que esté al tanto del estado actual de asistencia de su estudiante y tenga la oportunidad de tomar medidas antes de que ocurran ausencias adicionales.
+
+Se requiere obtener crédito de asistencia de lunes a viernes durante todo el año escolar 2026-2027, excepto durante los días festivos o días libres para los estudiantes. Los estudiantes pueden obtener crédito de asistencia de varias maneras, entre ellas:
+
+• Asistir a una LiveLesson
+• Hablar con un maestro por teléfono
+• Completar una lección de su planificador
+• Participar en una excursión patrocinada por la escuela
+• Completar la Vista de Datos de Certificación (Attestation Data View)
+
+Los estudiantes no pueden exceder 8 ausencias en un semestre. Dado que su estudiante ya tiene cuatro ausencias registradas, es importante que participe de manera constante en las actividades escolares todos los días de ahora en adelante.
+
+Por favor, comuníquese con el Advisor/HR de su estudiante lo antes posible para hablar sobre su asistencia actual y crear un plan que le permita mantenerse al día durante el resto del semestre. Estamos aquí para apoyar a su estudiante y queremos trabajar juntos para ayudarle a alcanzar el éxito.
+
+Gracias por prestar atención a este importante asunto y por colaborar con nosotros para apoyar el éxito de su estudiante.
+
+Atentamente,`;
+const L2_EN=`Dear Parent/Guardian,
+
+We are reaching out because your student has accumulated eight or more absences this semester. At this point, your student’s attendance requires immediate attention.
+
+Students are expected to earn attendance credit every Monday through Friday through the 2026-2027 school year, excluding student holidays. Attendance credit can be earned through a variety of qualifying academic activities, including:
+
+• Attending a LiveLesson
+• Speaking with a teacher by phone
+• Completing a lesson from their planner
+• Participating in a school sponsored field trip
+• Completing the Attestation Data View
+
+Students cannot exceed 8 absences in a semester. At this time our grade level Assistant Principal will be reaching out regarding next steps.
+
+Please contact your student’s Advisor/HR as soon as possible to review their attendance and develop a plan to ensure they are earning attendance credit each school day and staying on track while waiting for communication from the Assistant Principal.
+
+Regular daily engagement is essential to your student’s success. We appreciate your immediate attention to this matter and your partnership in helping your student remain successful and in good standing.
+
+Sincerely,`;
+const L2_ES=`Carta de Advertencia de Prevención del Ausentismo – Nivel 2
+
+Asunto: Advertencia importante de asistencia – Se requiere tomar medidas
+
+Estimado padre, madre o tutor:
+
+Nos comunicamos con usted porque su estudiante ha acumulado ocho o más ausencias durante este semestre. En este momento, la asistencia de su estudiante requiere atención inmediata.
+
+Se espera que los estudiantes obtengan crédito de asistencia de lunes a viernes durante todo el año escolar 2026-2027, excepto durante los días festivos o días libres para los estudiantes. El crédito de asistencia se puede obtener mediante una variedad de actividades académicas que califican, entre ellas:
+
+• Asistir a una LiveLesson
+• Hablar con un maestro por teléfono
+• Completar una lección de su planificador
+• Participar en una excursión patrocinada por la escuela
+• Completar la Vista de Datos de Certificación (Attestation Data View)
+
+Los estudiantes no pueden exceder 8 ausencias en un semestre. En este momento, el Subdirector correspondiente al nivel de grado de su estudiante se comunicará con usted para informarle sobre los próximos pasos.
+
+Por favor, comuníquese con el Advisor/HR de su estudiante lo antes posible para revisar su asistencia y desarrollar un plan que garantice que esté obteniendo crédito de asistencia cada día escolar y se mantenga al día mientras espera la comunicación del Subdirector.
+
+La participación diaria y constante es esencial para el éxito de su estudiante. Agradecemos su atención inmediata a este asunto y su colaboración para ayudar a que su estudiante continúe teniendo éxito y se mantenga en buen estado académico.
+
+Atentamente,`;
+
+let students=[], history=[];
+const norm=v=>String(v??'').trim();
+const isDate=v=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(norm(v));
+const key=(id,level)=>norm(id)+'|'+level;
+
+async function readWorkbook(file){
+ const buf=await file.arrayBuffer(); return XLSX.read(buf,{type:'array'});
+}
+function activeAttendanceColumns(rows, headers, firstDate){
+ const active=[];
+ for(let c=firstDate;c<headers.length;c++){
+   if(rows.some(r=>['P','A'].includes(norm(r[c]).toUpperCase()))) active.push(c);
+ }
+ return active;
+}
+document.getElementById('attendanceFile').addEventListener('change',async e=>{
+ const file=e.target.files[0]; if(!file)return;
+ const wb=await readWorkbook(file);
+ const ws=wb.Sheets['Data']||wb.Sheets[wb.SheetNames.find(n=>n!=='Overview')||wb.SheetNames[0]];
+ const a=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}); const headers=a[0].map(norm), rows=a.slice(1);
+ const idx={id:headers.indexOf('ID'),last:headers.indexOf('Last Name'),first:headers.indexOf('First Name'),teacher:headers.indexOf('Homeroom Teacher'),grade:headers.indexOf('Grade')};
+ const firstDate=headers.findIndex(isDate); if(Object.values(idx).some(x=>x<0)||firstDate<0){alert('Could not find the expected Connexus columns.');return;}
+ const active=activeAttendanceColumns(rows,headers,firstDate);
+ students=rows.filter(r=>{const g=parseInt(norm(r[idx.grade]),10);return g>=3&&g<=8}).map(r=>({
+  id:norm(r[idx.id]),name:(norm(r[idx.first])+' '+norm(r[idx.last])).trim(),teacher:norm(r[idx.teacher]),grade:norm(r[idx.grade]),
+  absences:active.reduce((n,c)=>n+(norm(r[c]).toUpperCase()==='A'?1:0),0)
+ }));
+ const teachers=[...new Set(students.map(s=>s.teacher).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+ const sel=document.getElementById('teacher'); sel.innerHTML='<option value="">Choose a teacher...</option>'+teachers.map(t=>'<option>'+esc(t)+'</option>').join('');
+ document.getElementById('teacherBox').classList.remove('hidden'); document.getElementById('dashboard').classList.remove('hidden'); render();
+});
+document.getElementById('historyFile').addEventListener('change',async e=>{
+ const file=e.target.files[0]; if(!file)return;
+ const wb=await readWorkbook(file); const ws=wb.Sheets[wb.SheetNames[0]];
+ history=XLSX.utils.sheet_to_json(ws,{defval:''}).map(r=>({id:norm(r['Student ID']),name:norm(r['Student Name']),teacher:norm(r['Homeroom Teacher']),level:norm(r['Level']),absences:Number(r['Absences When Sent']||0),date:norm(r['Date Sent'])}));
+ render();
+});
+document.getElementById('teacher').addEventListener('change',render);
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function currentLevel(n){return n>=8?'Level 2':n>=4?'Level 1':'';}
+function render(){
+ const teacher=document.getElementById('teacher').value; const body=document.getElementById('rows'); body.innerHTML='';
+ if(!teacher){document.getElementById('need1').textContent=0;document.getElementById('need2').textContent=0;document.getElementById('already').textContent=0;return;}
+ const list=students.filter(s=>s.teacher===teacher&&s.absences>=4).sort((a,b)=>b.absences-a.absences||a.name.localeCompare(b.name));
+ let n1=0,n2=0,done=0;
+ list.forEach(s=>{const level=currentLevel(s.absences), sent=history.some(h=>key(h.id,h.level)===key(s.id,level)); if(sent)done++;else if(level==='Level 1')n1++;else n2++;
+  const tr=document.createElement('tr'); tr.className=(level==='Level 1'?'l1':'l2')+(sent?' done':'');
+  const prior=history.filter(h=>h.id===s.id).map(h=>h.level+' '+h.date).join('; ')||'—';
+  tr.innerHTML='<td>'+esc(s.name)+'</td><td>'+esc(s.id)+'</td><td>'+esc(s.grade)+'</td><td><b>'+s.absences+'</b></td><td><span class="pill '+(level==='Level 1'?'p1':'p2')+'">'+level+'</span></td><td>'+esc(prior)+'</td><td><div class="actions"><button data-letter="'+level+'">Letter</button><button data-copyid="'+esc(s.id)+'" class="secondary">Copy ID</button>'+(sent?'<button disabled>Already Sent</button>':'<button class="green" data-sent="'+esc(s.id)+'" data-level="'+level+'" data-name="'+esc(s.name)+'" data-abs="'+s.absences+'">Mark Sent</button>')+'</div></td>';
+  body.appendChild(tr);
+ });
+ document.getElementById('need1').textContent=n1;document.getElementById('need2').textContent=n2;document.getElementById('already').textContent=done;
+ body.querySelectorAll('[data-letter]').forEach(b=>b.onclick=()=>showLetter(b.dataset.letter));
+ body.querySelectorAll('[data-copyid]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copyid));
+ body.querySelectorAll('[data-sent]').forEach(b=>b.onclick=()=>markSent(b.dataset));
+}
+function showLetter(level){
+ const l2=level==='Level 2'; document.getElementById('letterCard').classList.remove('hidden');document.getElementById('letterTitle').textContent=level+' Attendance Letter';
+ document.getElementById('subject').textContent=l2?LEVEL2_SUBJECT:LEVEL1_SUBJECT;document.getElementById('english').value=l2?L2_EN:L1_EN;document.getElementById('spanish').value=l2?L2_ES:L1_ES;
+ document.getElementById('letterCard').scrollIntoView({behavior:'smooth'});
+}
+function markSent(d){
+ const teacher=document.getElementById('teacher').value; const today=new Date().toLocaleDateString('en-US');
+ if(!confirm('Mark '+d.name+' '+d.level+' letter as sent today?'))return;
+ history.push({id:d.sent,name:d.name,teacher,level:d.level,absences:Number(d.abs),date:today}); render();
+}
+function copy(v){navigator.clipboard.writeText(v);}
+document.getElementById('copySubject').onclick=()=>copy(document.getElementById('subject').textContent);
+document.getElementById('copyEnglish').onclick=()=>copy(document.getElementById('english').value);
+document.getElementById('copySpanish').onclick=()=>copy(document.getElementById('spanish').value);
+document.getElementById('copyBoth').onclick=()=>copy(document.getElementById('english').value+'\n\n--------------------\n\n'+document.getElementById('spanish').value);
+document.getElementById('downloadLog').onclick=()=>{
+ const rows=history.map(h=>({'Student ID':h.id,'Student Name':h.name,'Homeroom Teacher':h.teacher,'Level':h.level,'Absences When Sent':h.absences,'Date Sent':h.date}));
+ const ws=XLSX.utils.json_to_sheet(rows,{header:['Student ID','Student Name','Homeroom Teacher','Level','Absences When Sent','Date Sent']}); ws['!cols']=[{wch:14},{wch:28},{wch:25},{wch:12},{wch:20},{wch:14}];
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Outreach Log');XLSX.writeFile(wb,'Attendance_Outreach_Log.xlsx');
+};
+</script></body></html>
