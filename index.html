@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Connexus Attendance Checker — Grades 3–8</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;margin:0;color:#172033}.wrap{max-width:780px;margin:48px auto;padding:0 20px}.card{background:white;border-radius:18px;padding:30px;box-shadow:0 10px 35px #00000014}h1{margin-top:0;color:#5b2c83}.sub{font-size:18px;line-height:1.5}.rules{background:#f3ecfa;border-left:6px solid #7b3fa1;padding:16px 18px;margin:22px 0;border-radius:8px}.drop{border:2px dashed #9aa6b2;border-radius:14px;padding:28px;text-align:center;margin:22px 0}.btn{background:#5b2c83;color:white;border:0;border-radius:10px;padding:13px 20px;font-size:16px;font-weight:700;cursor:pointer}.btn:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:18px;font-weight:700}.small{font-size:13px;color:#667085}.ok{color:#087443}.bad{color:#b42318}</style>
+</head>
+<body><div class="wrap"><div class="card">
+<h1>Connexus Attendance Checker</h1>
+<p class="sub">Creates a <b>grades 3–8 only</b> report and highlights the <b>entire student row</b> when the attendance pattern needs review.</p>
+<div class="rules"><b>Flags a row when:</b><br>1) The first recorded attendance mark is <b>A</b> instead of P.<br>2) There is a <b>blank between recorded P/A marks on an active attendance date</b>.<br><br>Leading/trailing blanks and schoolwide blank dates (holidays/non-attendance days) are ignored.</div>
+<div class="drop"><input id="file" type="file" accept=".xlsx,.xls" /><p class="small">Choose the “All Attendance Records” Excel file downloaded from Connexus.</p></div>
+<button id="run" class="btn" disabled>Check Attendance & Download Highlighted Report</button>
+<div id="status" class="status"></div>
+<p class="small">The original file is not changed. This tool creates a new copy ending in <b>_CHECKED.xlsx</b>.</p>
+</div></div>
+<script>
+const fileInput=document.getElementById('file'), runBtn=document.getElementById('run'), status=document.getElementById('status');
+fileInput.addEventListener('change',()=>{runBtn.disabled=!fileInput.files.length;status.textContent='';});
+function cellValue(ws,r,c){const a=XLSX.utils.encode_cell({r,c}); return ws[a] ? ws[a].v : null;}
+function norm(v){return v==null?'':String(v).trim().toUpperCase();}
+runBtn.addEventListener('click',async()=>{
+ try{
+  status.className='status'; status.textContent='Checking report…'; runBtn.disabled=true;
+  const file=fileInput.files[0], data=await file.arrayBuffer(), wb=XLSX.read(data,{type:'array',cellStyles:true});
+  const sheetName=wb.SheetNames.find(n=>n.toLowerCase()==='data') || wb.SheetNames[0], ws=wb.Sheets[sheetName];
+  if(!ws['!ref']) throw new Error('No data found in the workbook.');
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  let headerRow=-1, gradeCol=-1, firstDateCol=-1;
+  for(let r=range.s.r;r<=Math.min(range.e.r,25);r++){
+    for(let c=range.s.c;c<=range.e.c;c++){if(norm(cellValue(ws,r,c))==='GRADE'){headerRow=r;gradeCol=c;break;}}
+    if(headerRow>=0) break;
+  }
+  if(headerRow<0) throw new Error('Could not find the Grade column. Make sure this is the Connexus All Attendance Records export.');
+  for(let c=gradeCol+1;c<=range.e.c;c++){const h=String(cellValue(ws,headerRow,c)??'').trim();if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(h)){firstDateCol=c;break;}}
+  if(firstDateCol<0) throw new Error('Could not find the attendance date columns.');
+  const activeDateCols=[];
+  for(let c=firstDateCol;c<=range.e.c;c++){
+    let hasAttendance=false;
+    for(let r=headerRow+1;r<=range.e.r;r++){const m=norm(cellValue(ws,r,c));if(m==='P'||m==='A'){hasAttendance=true;break;}}
+    if(hasAttendance) activeDateCols.push(c);
+  }
+  let flagged=0, checked=0;
+  const flaggedRows=[], fill={patternType:'solid',fgColor:{rgb:'FFF2CC'}}, font={color:{rgb:'9C0006'}}, keepRows=[headerRow];
+  for(let r=headerRow+1;r<=range.e.r;r++){
+    const g=parseInt(String(cellValue(ws,r,gradeCol)??'').trim(),10);
+    if(!(g>=3&&g<=8)) continue;
+    keepRows.push(r); checked++;
+    const marks=activeDateCols.map(c=>norm(cellValue(ws,r,c))), recorded=[];
+    for(let i=0;i<marks.length;i++) if(marks[i]==='P'||marks[i]==='A') recorded.push(i);
+    if(!recorded.length) continue;
+    const first=recorded[0], last=recorded[recorded.length-1], firstP=marks.indexOf('P'), firstA=marks.indexOf('A');
+    const aBeforeP=(firstA>=0 && firstP>=0 && firstA<firstP);
+    let internalBlank=false;
+    for(let i=first+1;i<last;i++){if(marks[i]===''){internalBlank=true;break;}}
+    if(aBeforeP||internalBlank){
+      flagged++; const reasons=[];
+      if(aBeforeP) reasons.push('A before first P');
+      if(internalBlank) reasons.push('Blank between attendance marks');
+      flaggedRows.push({row:r,reason:reasons.join(' + ')});
+      for(let c=range.s.c;c<=range.e.c;c++){const addr=XLSX.utils.encode_cell({r,c});if(!ws[addr]) ws[addr]={t:'s',v:''};ws[addr].s=Object.assign({},ws[addr].s||{}, {fill,font});}
+    }
+  }
+  const out={}; let outR=0;
+  for(const srcR of keepRows){
+    for(let c=range.s.c;c<=range.e.c;c++){const src=XLSX.utils.encode_cell({r:srcR,c});if(ws[src]) out[XLSX.utils.encode_cell({r:outR,c})]=JSON.parse(JSON.stringify(ws[src]));}
+    outR++;
+  }
+  out['!ref']=XLSX.utils.encode_range({s:{r:0,c:range.s.c},e:{r:Math.max(0,outR-1),c:range.e.c}});
+  if(ws['!cols']) out['!cols']=JSON.parse(JSON.stringify(ws['!cols']));
+  if(ws['!rows']) out['!rows']=keepRows.map(r=>ws['!rows'][r]||{});
+  wb.Sheets[sheetName]=out;
+  const review={};
+  review[XLSX.utils.encode_cell({r:0,c:0})]={t:'s',v:'Reason for Review'};
+  for(let c=range.s.c;c<=range.e.c;c++){const src=XLSX.utils.encode_cell({r:headerRow,c});if(ws[src]) review[XLSX.utils.encode_cell({r:0,c:c-range.s.c+1})]=JSON.parse(JSON.stringify(ws[src]));}
+  flaggedRows.forEach((item,idx)=>{
+    const rr=idx+1; review[XLSX.utils.encode_cell({r:rr,c:0})]={t:'s',v:item.reason,s:{fill,font}};
+    for(let c=range.s.c;c<=range.e.c;c++){const src=XLSX.utils.encode_cell({r:item.row,c}), dest=XLSX.utils.encode_cell({r:rr,c:c-range.s.c+1});if(ws[src]) review[dest]=JSON.parse(JSON.stringify(ws[src]));else review[dest]={t:'s',v:'',s:{fill,font}};}
+  });
+  review['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(0,flaggedRows.length),c:range.e.c-range.s.c+1}});
+  review['!cols']=[{wch:32}].concat(ws['!cols']?JSON.parse(JSON.stringify(ws['!cols'])):[]);
+  if(wb.SheetNames.includes('Needs Review')) delete wb.Sheets['Needs Review']; wb.Sheets['Needs Review']=review;
+  const absenceRows=[];
+  for(let r=headerRow+1;r<=range.e.r;r++){
+    const g=parseInt(String(cellValue(ws,r,gradeCol)??'').trim(),10); if(!(g>=3&&g<=8)) continue;
+    const aCount=activeDateCols.reduce((n,c)=>n+(norm(cellValue(ws,r,c))==='A'?1:0),0), rowVals=[];
+    for(let c=range.s.c;c<firstDateCol;c++) rowVals.push(cellValue(ws,r,c)??'');
+    absenceRows.push({values:rowVals,count:aCount});
+  }
+  absenceRows.sort((a,b)=>b.count-a.count);
+  const absenceData=[], absenceHeader=[];
+  for(let c=range.s.c;c<firstDateCol;c++) absenceHeader.push(cellValue(ws,headerRow,c)??'');
+  absenceHeader.push("Total A's"); absenceData.push(absenceHeader);
+  for(const item of absenceRows) absenceData.push(item.values.concat(item.count));
+  const absenceSheet=XLSX.utils.aoa_to_sheet(absenceData);
+  absenceSheet['!cols']=Array(absenceHeader.length).fill({wch:18}); absenceSheet['!cols'][absenceHeader.length-1]={wch:12};
+  if(wb.SheetNames.includes('Absence Count')) delete wb.Sheets['Absence Count']; wb.Sheets['Absence Count']=absenceSheet;
+  const summary=XLSX.utils.aoa_to_sheet([
+   ['Connexus Attendance Check — Grades 3–8'],['Students checked',checked],['Rows highlighted for review',flagged],[],
+   ['Highlight rules'],['1. A occurs before a later P (leading blanks ignored)'],['2. Blank occurs between recorded P/A marks on an active attendance date'],[],
+   ['Ignored'],['Leading blanks before first recorded attendance'],['Trailing blanks after last recorded attendance'],['Schoolwide blank dates / holidays'],[],
+   ['Output'],['Data sheet contains grades 3–8 only'],['Absence Count tab counts actual A marks for each student']
+  ]);
+  summary['!cols']=[{wch:58},{wch:18}];
+  if(wb.SheetNames.includes('Attendance Check')) delete wb.Sheets['Attendance Check'];
+  wb.SheetNames.unshift('Attendance Check'); wb.Sheets['Attendance Check']=summary;
+  wb.SheetNames=wb.SheetNames.filter(n=>n!=='Needs Review'); wb.SheetNames.splice(1,0,'Needs Review');
+  wb.SheetNames=wb.SheetNames.filter(n=>n!=='Absence Count'); wb.SheetNames.splice(2,0,'Absence Count');
+  const base=file.name.replace(/\.(xlsx|xls)$/i,'');
+  XLSX.writeFile(wb,base+'_CHECKED.xlsx',{cellStyles:true});
+  status.className='status ok'; status.textContent=`Done! Checked ${checked.toLocaleString()} grade 3–8 students and highlighted ${flagged.toLocaleString()} rows for review. Open Needs Review and Absence Count in the downloaded workbook.`;
+ }catch(e){status.className='status bad';status.textContent='Could not check the file: '+e.message;}
+ finally{runBtn.disabled=false;}
+});
+</script></body></html>
