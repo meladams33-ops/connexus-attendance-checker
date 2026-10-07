@@ -194,8 +194,16 @@ function render(){
  });
  document.getElementById('need1').textContent=n1;document.getElementById('need2').textContent=n2;document.getElementById('already').textContent=done;
  body.querySelectorAll('[data-letter]').forEach(b=>b.onclick=()=>showLetter(b.dataset.letter));
+ body.querySelectorAll('[data-outreach]').forEach(b=>b.onclick=()=>startOutreach(b.dataset.outreach,b.dataset.outreachLevel,b.dataset.outreachAbs));
  body.querySelectorAll('[data-copyid]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copyid));
  body.querySelectorAll('[data-sent]').forEach(b=>b.onclick=()=>markSent(b.dataset));
+}
+function startOutreach(id,level,absences){
+ const u=new URL('https://www.connexus.com/webuser/webusers.aspx');
+ u.searchParams.set('outreachId',id);
+ u.searchParams.set('outreachLevel',level);
+ u.searchParams.set('outreachAbsences',absences);
+ window.open(u.toString(),'_blank','noopener');
 }
 function showLetter(level){
  const l2=level==='Level 2'; document.getElementById('letterCard').classList.remove('hidden');document.getElementById('letterTitle').textContent=level+' Attendance Letter';
